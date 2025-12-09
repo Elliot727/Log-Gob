@@ -17,6 +17,8 @@ LogGob is a Clash Royale battle logger that fetches battle data from the Clash R
 - Side-by-side deck comparison showing team vs opponent cards
 - Properly aligned card levels in table format
 - Human-readable time format (YYYY-MM-DD HH:MM)
+- Stats view showing win rate, battle statistics, and arena performance (accessible via 'S' key)
+- Enhanced error handling with clear messages for API access issues (invalid API key, invalid player tag, etc.)
 
 ## Prerequisites
 
@@ -52,7 +54,7 @@ APIKEY=your_clash_royale_api_key_here
 PLAYERTAG=your_player_tag_here
 ```
 
-If you don't specify a `PLAYERTAG`, the application will use a default tag and show a warning message.
+The application will exit with an error message if `PLAYERTAG` is not set, requiring you to provide a valid Clash Royale player tag.
 
 ## Database Schema
 
@@ -88,6 +90,7 @@ Controls in TUI:
 - `J` or `Down Arrow`: Navigate down through battles
 - `K` or `Up Arrow`: Navigate up through battles
 - `R`: Refresh battles from database
+- `S`: Switch to stats view (showing win rate, battle statistics, arena performance, etc.)
 - `Q` or `Ctrl+C`: Quit the application
 
 Make sure to run the CLI version first to populate the database with battle data before using the TUI.
@@ -98,6 +101,8 @@ The TUI displays:
 - Detailed battle information including teams, opponents, and crowns
 - Side-by-side deck comparison showing team vs opponent cards
 - Properly aligned card levels in table format for easy comparison
+- Stats view showing win rate, battle statistics, and arena performance (switch with 'S' key)
+- Enhanced error handling with clear messages for API access issues
 
 ## Project Structure
 
@@ -129,6 +134,7 @@ log-gob/
 ## Environment Variables
 
 - `APIKEY` - Your Clash Royale API key (required)
+- `PLAYERTAG` - Your Clash Royale player tag (required, no longer uses a default example tag)
 
 ## Contributing
 

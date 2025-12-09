@@ -51,10 +51,16 @@ func (c *Client) Get(path string, response interface{}) error {
 		return err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		bodyStr := string(body)
+		if resp.StatusCode == 403 {
+			return fmt.Errorf("API request failed with status %d (Forbidden): %s. This usually means your API key is invalid, expired, or lacks the required permissions. Please check your APIKEY in the .env file and ensure it's a valid Clash Royale API key from https://developer.clashroyale.com", resp.StatusCode, bodyStr)
+		} else if resp.StatusCode == 404 {
+			return fmt.Errorf("API request failed with status %d (Not Found): %s. This usually means the player tag doesn't exist or is invalid. Please verify your PLAYERTAG in the .env file is correct.", resp.StatusCode, bodyStr)
+		} else {
+			return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, bodyStr)
+		}
 	}
 
 	body, err := io.ReadAll(resp.Body)

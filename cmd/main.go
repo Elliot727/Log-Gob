@@ -6,6 +6,7 @@ package main
 import (
 	"database/sql"
 	"log"
+	"net/url"
 	"os"
 
 	"github.com/elliot727/log-gob/internal/api"
@@ -48,19 +49,18 @@ func main() {
 		// Get player tag from environment variables
 		playerTag := os.Getenv("PLAYERTAG")
 		if playerTag == "" {
-			// Use a default tag if none is set, but warn the user
-			playerTag = "PLY2Q2LL" // Default example tag
-			log.Println("PLAYERTAG environment variable not set, using default tag. Please set PLAYERTAG in your .env file")
+			log.Fatal("PLAYERTAG environment variable not set. Please set PLAYERTAG in your .env file with your Clash Royale player tag (e.g., #ABC123)")
 		}
 
-		// Ensure player tag has proper format for API request
-		if playerTag[0] != '#' {
-			playerTag = "#" + playerTag
+		// Validate player tag format - should start with # and have valid characters
+		if len(playerTag) < 2 || playerTag[0] != '#' {
+			log.Fatalf("Invalid player tag format: %s. Player tag should start with # (e.g., #ABC123)", playerTag)
 		}
 
 		// Fetch battle log for the specified player
 		var battleLog []types.Battle
-		err := apiClient.Get("/v1/players/"+playerTag+"/battlelog", &battleLog)
+		encodedPlayerTag := url.PathEscape(playerTag)
+		err := apiClient.Get("/v1/players/"+encodedPlayerTag+"/battlelog", &battleLog)
 		if err != nil {
 			log.Printf("Error fetching battle log for player %s: %v", playerTag, err)
 		} else {
