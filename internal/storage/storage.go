@@ -247,16 +247,32 @@ func (s *Storage) loadParticipants(battleTime string, role string) ([]types.Play
 
 	for rows.Next() {
 		var p types.Player
+		var startingTrophies sql.NullInt64
+		var trophyChange sql.NullInt32
+
 		err := rows.Scan(
 			&p.Tag,
 			&p.Name,
 			&p.Crowns,
-			&p.StartingTrophies,
-			&p.TrophyChange,
+			&startingTrophies,
+			&trophyChange,
 			&p.ElixirLeaked,
 		)
 		if err != nil {
 			return nil, err
+		}
+
+		// Handle NULL values
+		if startingTrophies.Valid {
+			p.StartingTrophies = int32(startingTrophies.Int64)
+		} else {
+			p.StartingTrophies = 0
+		}
+
+		if trophyChange.Valid {
+			p.TrophyChange = int32(trophyChange.Int32)
+		} else {
+			p.TrophyChange = 0
 		}
 
 		cards, err := s.loadDeck(p.Tag, battleTime)

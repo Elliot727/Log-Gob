@@ -10,6 +10,13 @@ LogGob is a Clash Royale battle logger that fetches battle data from the Clash R
 - Supports PvP battle tracking
 - Environment variable configuration
 - Structured data models for battles, players, cards, arenas, and game modes
+- Interactive TUI for viewing battle history (using Bubble Tea and Lip Gloss for styling)
+- Makefile for easy building and running
+- Colorful terminal interface with detailed battle information and cards
+- Battle result display (Victory/Loss/Draw) prominently shown
+- Side-by-side deck comparison showing team vs opponent cards
+- Properly aligned card levels in table format
+- Human-readable time format (YYYY-MM-DD HH:MM)
 
 ## Prerequisites
 
@@ -61,14 +68,45 @@ The application creates the following tables:
 
 ## Usage
 
-The application fetches battle logs for player `#PLY2Q2LL` and stores them in the database. Modify the player tag in `cmd/main.go` if you want to track a different player.
+### CLI Version
+The main application fetches battle logs from the API and stores them in the database:
+```bash
+go run cmd/main.go
+# Or using make:
+make run
+```
+
+### TUI Version
+The TUI version allows you to interactively view battles stored in the database:
+```bash
+go run cmd/tui/main.go
+# Or using make:
+make tui
+```
+
+Controls in TUI:
+- `J` or `Down Arrow`: Navigate down through battles
+- `K` or `Up Arrow`: Navigate up through battles
+- `R`: Refresh battles from database
+- `Q` or `Ctrl+C`: Quit the application
+
+Make sure to run the CLI version first to populate the database with battle data before using the TUI.
+
+The TUI displays:
+- Battle result (Victory/Loss/Draw) prominently after the battle header
+- Human-readable time format (YYYY-MM-DD HH:MM)
+- Detailed battle information including teams, opponents, and crowns
+- Side-by-side deck comparison showing team vs opponent cards
+- Properly aligned card levels in table format for easy comparison
 
 ## Project Structure
 
 ```
 log-gob/
 ├── cmd/
-│   └── main.go           # Main application entry point
+│   ├── main.go           # CLI application - fetches battles from API and stores to database
+│   └── tui/
+│       └── main.go       # TUI application - interactive terminal interface to view battles
 ├── internal/
 │   ├── api/
 │   │   └── client.go     # API client implementation

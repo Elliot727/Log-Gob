@@ -60,7 +60,7 @@ func main() {
 
 		// Fetch battle log for the specified player
 		var battleLog []types.Battle
-		err := apiClient.Get("/v1/players/" + playerTag + "/battlelog", &battleLog)
+		err := apiClient.Get("/v1/players/"+playerTag+"/battlelog", &battleLog)
 		if err != nil {
 			log.Printf("Error fetching battle log for player %s: %v", playerTag, err)
 		} else {
