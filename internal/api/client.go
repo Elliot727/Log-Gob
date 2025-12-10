@@ -1,22 +1,20 @@
-// Package api provides an HTTP client for making API requests with authentication.
 package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 )
 
-// Client represents an API client with base URL, API key, and HTTP client.
 type Client struct {
 	BaseURL string
 	APIKey  string
 	HTTP    *http.Client
 }
 
-// New creates a new API client with the given base URL and API key.
 func New(baseURL, apiKey string) *Client {
 	return &Client{
 		BaseURL: baseURL,
@@ -27,20 +25,17 @@ func New(baseURL, apiKey string) *Client {
 	}
 }
 
-// request creates an HTTP request with proper headers for API authentication.
 func (c *Client) request(path string) (*http.Request, error) {
 	req, err := http.NewRequest("GET", c.BaseURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
-
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	return req, nil
 }
 
-// Get makes a GET request to the specified path and unmarshals the response into the provided interface.
-func (c *Client) Get(path string, response interface{}) error {
+func (c *Client) Get(path string, out interface{}) error {
 	req, err := c.request(path)
 	if err != nil {
 		return err
@@ -51,22 +46,21 @@ func (c *Client) Get(path string, response interface{}) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return readErr
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		bodyStr := string(body)
-		if resp.StatusCode == 403 {
-			return fmt.Errorf("API request failed with status %d (Forbidden): %s. This usually means your API key is invalid, expired, or lacks the required permissions. Please check your APIKEY in the .env file and ensure it's a valid Clash Royale API key from https://developer.clashroyale.com", resp.StatusCode, bodyStr)
-		} else if resp.StatusCode == 404 {
-			return fmt.Errorf("API request failed with status %d (Not Found): %s. This usually means the player tag doesn't exist or is invalid. Please verify your PLAYERTAG in the .env file is correct.", resp.StatusCode, bodyStr)
-		} else {
-			return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, bodyStr)
-		}
+
+		return fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
+	if len(body) == 0 {
+		return errors.New("empty response body")
 	}
 
-	return json.Unmarshal(body, response)
+	return json.Unmarshal(body, out)
 }

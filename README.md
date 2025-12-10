@@ -52,6 +52,8 @@ Create a `.env` file in the root directory with your Clash Royale API key and pl
 ```
 APIKEY=your_clash_royale_api_key_here
 PLAYERTAG=your_player_tag_here
+DB_PATH=battles.db
+API_BASE_URL=https://api.clashroyale.com
 ```
 
 The application will exit with an error message if `PLAYERTAG` is not set, requiring you to provide a valid Clash Royale player tag.
@@ -135,6 +137,8 @@ log-gob/
 
 - `APIKEY` - Your Clash Royale API key (required)
 - `PLAYERTAG` - Your Clash Royale player tag (required, no longer uses a default example tag)
+- `DB_PATH` - Path to the SQLite database file (optional, defaults to `battles.db`)
+- `API_BASE_URL` - Base URL for the Clash Royale API (optional, defaults to `https://api.clashroyale.com`)
 
 ## Contributing
 

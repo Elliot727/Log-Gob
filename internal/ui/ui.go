@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/elliot727/log-gob/internal/analytics"
 	"github.com/elliot727/log-gob/internal/storage"
 	"github.com/elliot727/log-gob/internal/types"
 )
@@ -70,10 +71,12 @@ type model struct {
 	storage     *storage.Storage
 	playerTag   string
 	battles     []types.Battle
+	analytics   analytics.Analytics // Store computed analytics
 	currentIdx  int
 	status      string
 	initialized bool
 	showStats   bool // Toggle between detail view and stats view
+	showAnalytics bool // Toggle to show detailed analytics vs basic stats
 }
 
 type fetchMsg struct {
@@ -90,10 +93,12 @@ func InitialModel(s *storage.Storage, playerTag string) model {
 		storage:     s,
 		playerTag:   playerTag,
 		battles:     []types.Battle{},
+		analytics:   analytics.Analytics{}, // Initialize with empty analytics
 		currentIdx:  0,
 		status:      "Loading battles...",
 		initialized: false,
 		showStats:   false,
+		showAnalytics: false,
 	}
 }
 
@@ -129,6 +134,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.status = "Switched to detail view"
 			}
+		case "a", "A":
+			// Toggle between basic stats and detailed analytics
+			m.showAnalytics = !m.showAnalytics
+			if m.showAnalytics {
+				m.status = "Switched to detailed analytics view"
+			} else {
+				m.status = "Switched to basic stats view"
+			}
 		}
 
 	case fetchMsg:
@@ -138,6 +151,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.battles = msg.battles
 			if len(m.battles) > 0 {
 				m.status = fmt.Sprintf("Fetched %d battles for player %s", len(m.battles), m.playerTag)
+				// Compute analytics using the fetched battles with a default target
+				// For now, using 7000 as a target (can be made configurable later)
+				analytics, err := analytics.Compute(m.storage, m.playerTag, 7000)
+				if err != nil {
+					m.status = fmt.Sprintf("Error computing analytics: %v", err)
+				} else {
+					m.analytics = analytics
+					m.status = fmt.Sprintf("Fetched %d battles and computed analytics for %s", len(m.battles), m.playerTag)
+				}
 			} else {
 				m.status = fmt.Sprintf("No battles found for player %s", m.playerTag)
 			}
@@ -173,78 +195,83 @@ func (m model) View() string {
 	}
 
 	if m.showStats {
-		// Stats view
-		stats := CalculateStats(m.battles)
-
-		s.WriteString(battleHeaderStyle.Render("BATTLE STATISTICS"))
-		s.WriteString("\n\n")
-
-		// Basic stats
-		s.WriteString(headerStyle.Bold(true).Render("Overall Performance"))
-		s.WriteString(fmt.Sprintf("\n%s\n", strings.Repeat("─", 40)))
-
-		winRateStyle := infoStyle
-		if stats.WinRate >= 60 {
-			winRateStyle = teamStyle // Green for good win rate
-		} else if stats.WinRate >= 50 {
-			winRateStyle = infoStyle // Light salmon for OK win rate
+		if m.showAnalytics {
+			// Detailed analytics view
+			s.WriteString(DisplayAnalytics(m.analytics))
 		} else {
-			winRateStyle = opponentStyle // Red for poor win rate
-		}
+			// Basic stats view
+			stats := CalculateStats(m.battles)
 
-		s.WriteString(fmt.Sprintf("Win Rate:       %-6s %s %.1f%%\n",
-			winRateStyle.Bold(true).Render(fmt.Sprintf("%.1f%%", stats.WinRate)),
-			makeProgressBar(stats.WinRate, 15),
-			stats.WinRate))
-		s.WriteString(fmt.Sprintf("Wins:            %s\n",
-			teamStyle.Render(fmt.Sprintf("%d", stats.TotalWins))))
-		s.WriteString(fmt.Sprintf("Losses:          %s\n",
-			opponentStyle.Render(fmt.Sprintf("%d", stats.TotalLosses))))
-		s.WriteString(fmt.Sprintf("Total Battles:   %s\n",
-			infoStyle.Render(fmt.Sprintf("%d", stats.TotalBattles))))
-		s.WriteString("\n")
+			s.WriteString(battleHeaderStyle.Render("BATTLE STATISTICS"))
+			s.WriteString("\n\n")
 
-		// Performance metrics
-		s.WriteString(headerStyle.Bold(true).Render("Performance Metrics"))
-		s.WriteString(fmt.Sprintf("\n%s\n", strings.Repeat("─", 40)))
-		s.WriteString(fmt.Sprintf("Avg Crowns Won:  %s\n",
-			teamStyle.Render(fmt.Sprintf("%.2f", stats.AvgCrownsWon))))
-		s.WriteString(fmt.Sprintf("Avg Crowns Lost: %s\n",
-			opponentStyle.Render(fmt.Sprintf("%.2f", stats.AvgCrownsLost))))
-		s.WriteString(fmt.Sprintf("Avg Trophy Gain: %s\n",
-			teamStyle.Render(fmt.Sprintf("%.1f", stats.AvgTrophyGain))))
-		s.WriteString(fmt.Sprintf("Avg Trophy Loss: %s\n",
-			opponentStyle.Render(fmt.Sprintf("%.1f", stats.AvgTrophyLoss))))
-		s.WriteString("\n")
+			// Basic stats
+			s.WriteString(headerStyle.Bold(true).Render("Overall Performance"))
+			s.WriteString(fmt.Sprintf("\n%s\n", strings.Repeat("─", 40)))
 
-		// Arena stats (UPDATED)
-		s.WriteString(headerStyle.Bold(true).Render("Arena Performance (Win Rate)"))
-		s.WriteString(fmt.Sprintf("\n%s\n", strings.Repeat("─", 65)))
-		s.WriteString(fmt.Sprintf("%-20s %-12s %-8s %s\n", "Arena", "Win Rate", "%", "Record (W-L)"))
-
-		for arena, stat := range stats.ArenaStats {
-			winRate := 0.0
-			if stat.Total > 0 {
-				winRate = float64(stat.Wins) / float64(stat.Total) * 100
-			}
-
-			// Color code the win rate
-			var style lipgloss.Style
-			if winRate >= 60 {
-				style = teamStyle
-			} else if winRate >= 50 {
-				style = infoStyle
+			winRateStyle := infoStyle
+			if stats.WinRate >= 60 {
+				winRateStyle = teamStyle // Green for good win rate
+			} else if stats.WinRate >= 50 {
+				winRateStyle = infoStyle // Light salmon for OK win rate
 			} else {
-				style = opponentStyle
+				winRateStyle = opponentStyle // Red for poor win rate
 			}
 
-			record := fmt.Sprintf("%d-%d", stat.Wins, stat.Losses)
+			s.WriteString(fmt.Sprintf("Win Rate:       %-6s %s %.1f%%\n",
+				winRateStyle.Bold(true).Render(fmt.Sprintf("%.1f%%", stats.WinRate)),
+				makeProgressBar(stats.WinRate, 15),
+				stats.WinRate))
+			s.WriteString(fmt.Sprintf("Wins:            %s\n",
+				teamStyle.Render(fmt.Sprintf("%d", stats.TotalWins))))
+			s.WriteString(fmt.Sprintf("Losses:          %s\n",
+				opponentStyle.Render(fmt.Sprintf("%d", stats.TotalLosses))))
+			s.WriteString(fmt.Sprintf("Total Battles:   %s\n",
+				infoStyle.Render(fmt.Sprintf("%d", stats.TotalBattles))))
+			s.WriteString("\n")
 
-			s.WriteString(fmt.Sprintf("%-20s %s %-8s %s\n",
-				infoStyle.Render(arena),
-				makeProgressBar(winRate, 10),
-				style.Render(fmt.Sprintf("%.1f%%", winRate)),
-				infoStyle.Render(record)))
+			// Performance metrics
+			s.WriteString(headerStyle.Bold(true).Render("Performance Metrics"))
+			s.WriteString(fmt.Sprintf("\n%s\n", strings.Repeat("─", 40)))
+			s.WriteString(fmt.Sprintf("Avg Crowns Won:  %s\n",
+				teamStyle.Render(fmt.Sprintf("%.2f", stats.AvgCrownsWon))))
+			s.WriteString(fmt.Sprintf("Avg Crowns Lost: %s\n",
+				opponentStyle.Render(fmt.Sprintf("%.2f", stats.AvgCrownsLost))))
+			s.WriteString(fmt.Sprintf("Avg Trophy Gain: %s\n",
+				teamStyle.Render(fmt.Sprintf("%.1f", stats.AvgTrophyGain))))
+			s.WriteString(fmt.Sprintf("Avg Trophy Loss: %s\n",
+				opponentStyle.Render(fmt.Sprintf("%.1f", stats.AvgTrophyLoss))))
+			s.WriteString("\n")
+
+			// Arena stats (UPDATED)
+			s.WriteString(headerStyle.Bold(true).Render("Arena Performance (Win Rate)"))
+			s.WriteString(fmt.Sprintf("\n%s\n", strings.Repeat("─", 65)))
+			s.WriteString(fmt.Sprintf("%-20s %-12s %-8s %s\n", "Arena", "Win Rate", "%", "Record (W-L)"))
+
+			for arena, stat := range stats.ArenaStats {
+				winRate := 0.0
+				if stat.Total > 0 {
+					winRate = float64(stat.Wins) / float64(stat.Total) * 100
+				}
+
+				// Color code the win rate
+				var style lipgloss.Style
+				if winRate >= 60 {
+					style = teamStyle
+				} else if winRate >= 50 {
+					style = infoStyle
+				} else {
+					style = opponentStyle
+				}
+
+				record := fmt.Sprintf("%d-%d", stat.Wins, stat.Losses)
+
+				s.WriteString(fmt.Sprintf("%-20s %s %-8s %s\n",
+					infoStyle.Render(arena),
+					makeProgressBar(winRate, 10),
+					style.Render(fmt.Sprintf("%.1f%%", winRate)),
+					infoStyle.Render(record)))
+			}
 		}
 	} else {
 		// Show current battle in detail
@@ -438,7 +465,15 @@ func (m model) View() string {
 	s.WriteString("\n")
 	s.WriteString(statusStyle.Render(m.status))
 	s.WriteString("\n")
-	s.WriteString(helpStyle.Render("Controls: [J/K] Navigate | [R] Refresh | [S] Stats | [Q] Quit"))
+	if m.showStats {
+		if m.showAnalytics {
+			s.WriteString(helpStyle.Render("Controls: [A] Basic Stats | [S] Battle Detail | [R] Refresh | [Q] Quit"))
+		} else {
+			s.WriteString(helpStyle.Render("Controls: [A] Detailed Analytics | [S] Battle Detail | [R] Refresh | [Q] Quit"))
+		}
+	} else {
+		s.WriteString(helpStyle.Render("Controls: [J/K] Navigate | [R] Refresh | [S] Stats | [Q] Quit"))
+	}
 
 	return s.String()
 }
@@ -531,8 +566,6 @@ func CalculateStats(battles []types.Battle) Stats {
 			if battle.Team[0].TrophyChange < 0 {
 				totalTrophyLoss += int(battle.Team[0].TrophyChange)
 			}
-		} else {
-
 		}
 	}
 
@@ -566,4 +599,173 @@ func makeProgressBar(percentage float64, width int) string {
 
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", empty)
 	return bar
+}
+
+// DisplayAnalytics displays the computed analytics in a colorful way
+func DisplayAnalytics(a analytics.Analytics) string {
+	var s strings.Builder
+
+	// Overall stats section
+	s.WriteString(battleHeaderStyle.Render("OVERALL PERFORMANCE"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("%s\n", strings.Repeat("─", 50)))
+
+	// Create a color-coded win rate display
+	winRateStyle := infoStyle
+	if a.Overall.WinRate >= 60 {
+		winRateStyle = teamStyle // Green for good win rate
+	} else if a.Overall.WinRate >= 50 {
+		winRateStyle = infoStyle // Light salmon for OK win rate
+	} else {
+		winRateStyle = opponentStyle // Red for poor win rate
+	}
+
+	s.WriteString(fmt.Sprintf("Total Battles:  %s\n",
+		infoStyle.Render(fmt.Sprintf("%d", a.Overall.TotalBattles))))
+	s.WriteString(fmt.Sprintf("Wins:           %s\n",
+		teamStyle.Render(fmt.Sprintf("%d", a.Overall.Wins))))
+	s.WriteString(fmt.Sprintf("Losses:         %s\n",
+		opponentStyle.Render(fmt.Sprintf("%d", a.Overall.Losses))))
+	s.WriteString(fmt.Sprintf("Win Rate:       %s %s %.1f%%\n",
+		winRateStyle.Bold(true).Render(fmt.Sprintf("%.1f%%", a.Overall.WinRate)),
+		makeProgressBar(a.Overall.WinRate, 12),
+		a.Overall.WinRate))
+	s.WriteString(fmt.Sprintf("Current Streak: %s\n",
+		getStreakStyle(a.Overall.CurrentStreak).Render(fmt.Sprintf("%+d", a.Overall.CurrentStreak))))
+	s.WriteString(fmt.Sprintf("Peak Trophies:  %s\n",
+		trophyStyle.Render(fmt.Sprintf("%d", a.Overall.PeakTrophies))))
+	s.WriteString(fmt.Sprintf("Total Trophy Gain: %s\n",
+		trophyStyle.Render(fmt.Sprintf("%+d", a.Overall.TotalTrophyGain))))
+
+	// Recent form section
+	s.WriteString("\n")
+	s.WriteString(battleHeaderStyle.Render("RECENT FORM"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("%s\n", strings.Repeat("─", 50)))
+
+	s.WriteString(fmt.Sprintf("Last 10: %s (%.1f%%)\n",
+		getWinRateStyle(a.Recent.Last10.WinRate).Render(fmt.Sprintf("%dW-%dL", a.Recent.Last10.Wins, a.Recent.Last10.Battles-a.Recent.Last10.Wins)),
+		a.Recent.Last10.WinRate))
+	s.WriteString(fmt.Sprintf("Last 20: %s (%.1f%%)\n",
+		getWinRateStyle(a.Recent.Last20.WinRate).Render(fmt.Sprintf("%dW-%dL", a.Recent.Last20.Wins, a.Recent.Last20.Battles-a.Recent.Last20.Wins)),
+		a.Recent.Last20.WinRate))
+	s.WriteString(fmt.Sprintf("Last 50: %s (%.1f%%)\n",
+		getWinRateStyle(a.Recent.Last50.WinRate).Render(fmt.Sprintf("%dW-%dL", a.Recent.Last50.Wins, a.Recent.Last50.Battles-a.Recent.Last50.Wins)),
+		a.Recent.Last50.WinRate))
+	s.WriteString(fmt.Sprintf("Today:   %s (%.1f%%)\n",
+		getWinRateStyle(a.Recent.Today.WinRate).Render(fmt.Sprintf("%dW-%dL", a.Recent.Today.Wins, a.Recent.Today.Battles-a.Recent.Today.Wins)),
+		a.Recent.Today.WinRate))
+
+	// Arena performance section
+	s.WriteString("\n")
+	s.WriteString(battleHeaderStyle.Render("ARENA PERFORMANCE"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("%s\n", strings.Repeat("─", 50)))
+
+	for _, arena := range a.Arenas {
+		if arena.Battles > 0 {
+			s.WriteString(fmt.Sprintf("%s: %s (%.1f%% W/L: %d-%d)\n",
+				headerStyle.Render(arena.ArenaName),
+				makeProgressBar(arena.WinRate, 10),
+				arena.WinRate,
+				arena.Wins,
+				arena.Battles-arena.Wins))
+		}
+	}
+
+	// Crown stats section
+	s.WriteString("\n")
+	s.WriteString(battleHeaderStyle.Render("CROWN ANALYSIS"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("%s\n", strings.Repeat("─", 50)))
+
+	s.WriteString(fmt.Sprintf("Avg Crowns Taken: %.2f\n",
+		a.Crowns.AvgCrownsTaken))
+	s.WriteString(fmt.Sprintf("Avg Crowns Conceded: %.2f\n",
+		a.Crowns.AvgCrownsConceded))
+	s.WriteString(fmt.Sprintf("Aggression Score: %s (%.1f%%)\n",
+		getAggressionStyle(a.Crowns.AggressionScore).Render(fmt.Sprintf("%.1f%%", a.Crowns.AggressionScore)),
+		a.Crowns.AggressionScore))
+
+	// Elixir analysis section
+	s.WriteString("\n")
+	s.WriteString(battleHeaderStyle.Render("ELIXIR ANALYSIS"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("%s\n", strings.Repeat("─", 50)))
+
+	s.WriteString(fmt.Sprintf("Avg Elixir Leak (Wins): %.2f\n",
+		a.Elixir.AvgLeakWins))
+	s.WriteString(fmt.Sprintf("Avg Elixir Leak (Losses): %.2f\n",
+		a.Elixir.AvgLeakLosses))
+	if a.Elixir.LeakImprovement != "" {
+		s.WriteString(fmt.Sprintf("Tip: %s\n",
+			infoStyle.Render(a.Elixir.LeakImprovement)))
+	}
+
+	// Loss insights section
+	s.WriteString("\n")
+	s.WriteString(battleHeaderStyle.Render("LOSS PATTERNS"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("%s\n", strings.Repeat("─", 50)))
+
+	s.WriteString(fmt.Sprintf("Total Losses: %d\n",
+		a.Losses.TotalLosses))
+	s.WriteString(fmt.Sprintf("High Elixir Losses: %d\n",
+		a.Losses.HighElixirLeakLosses))
+	s.WriteString(fmt.Sprintf("Recent Loss Streak: %d\n",
+		a.Losses.RecentLossStreak))
+	for _, note := range a.Losses.CommonNotes {
+		s.WriteString(fmt.Sprintf("• %s\n",
+			opponentStyle.Render(note)))
+	}
+
+	// Challenge proof section
+	s.WriteString("\n")
+	s.WriteString(battleHeaderStyle.Render("JOURNEY SUMMARY"))
+	s.WriteString("\n")
+	s.WriteString(fmt.Sprintf("%s\n", strings.Repeat("─", 50)))
+
+	s.WriteString(fmt.Sprintf("Started at: %s (%d trophies)\n",
+		infoStyle.Render(a.Challenge.StartArena),
+		a.Challenge.StartTrophies))
+	s.WriteString(fmt.Sprintf("Trophies Gained: %s\n",
+		trophyStyle.Render(fmt.Sprintf("%+d", a.Challenge.TrophiesGained))))
+	s.WriteString(fmt.Sprintf("Battles Since Start: %d\n",
+		a.Challenge.BattlesSinceStart))
+	s.WriteString(fmt.Sprintf("Win Rate: %.1f%%\n",
+		a.Challenge.WinRateSinceStart))
+	s.WriteString(fmt.Sprintf("Milestone: %s\n",
+		teamStyle.Render(a.Challenge.MilestoneMessage)))
+
+	return s.String()
+}
+
+// Helper function to get appropriate style for streaks
+func getStreakStyle(streak int) lipgloss.Style {
+	if streak > 0 {
+		return teamStyle // wins
+	} else if streak < 0 {
+		return opponentStyle // losses
+	}
+	return infoStyle // neutral
+}
+
+// Helper function to get appropriate style for win rates
+func getWinRateStyle(winRate float64) lipgloss.Style {
+	if winRate >= 60 {
+		return teamStyle
+	} else if winRate >= 50 {
+		return infoStyle
+	}
+	return opponentStyle
+}
+
+// Helper function to get appropriate style for aggression scores
+func getAggressionStyle(score float64) lipgloss.Style {
+	if score >= 70 {
+		return teamStyle
+	} else if score >= 50 {
+		return infoStyle
+	}
+	return opponentStyle
 }
